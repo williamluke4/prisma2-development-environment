@@ -1,7 +1,4 @@
 node_modules
 .env*
 yarn-error.log
-photonjs
-prisma2
-lift
 .DS_Store
