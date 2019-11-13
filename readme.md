@@ -5,4 +5,21 @@ yarn
 yarn setup
 ```
 
-### [Contributing to Photon.js](https://github.com/prisma/photonjs/tree/master/packages/photon#contributing)
+### [Developing Photon.js](https://github.com/prisma/photonjs/tree/master/packages/photon#contributing)
+
+### Developing Lift
+
+1. `cd lift/examples/blog`
+2. `ts-node ../src/bin.ts up`
+
+### Developing Init Command
+
+1. `cd prisma2/cli/introspection`
+2. `mkdir test && cd test`
+3. `ts-node ../src/bin.ts`
+
+### Developing Prisma2 CLI
+
+1. `cd prisma2/cli/prisma2`
+2. `mkdir test && cd test`
+3. `ts-node ../src/bin.ts generate`
