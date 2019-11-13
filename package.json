@@ -18,7 +18,7 @@
   "scripts": {
     "setup": "npm i --no-package-lock && ts-node scripts/setup.ts"
   },
-  "packages": [
+  "workspaces": [
     "lift",
     "photonjs/packages/*",
     "prisma2/cli/*"
