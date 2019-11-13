@@ -10,7 +10,7 @@ yarn setup
 ### Developing Lift
 
 1. `cd lift/examples/blog`
-2. `ts-node ../src/bin.ts up`
+2. `ts-node ../../src/bin.ts up`
 
 ### Developing Init Command
 
@@ -18,7 +18,7 @@ yarn setup
 2. `mkdir test && cd test`
 3. `ts-node ../src/bin.ts`
 
-### Developing Prisma2 CLI
+### Developing Prisma Framework CLI
 
 1. `cd prisma2/cli/prisma2`
 2. `mkdir test && cd test`
