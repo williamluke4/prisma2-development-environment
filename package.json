@@ -19,9 +19,14 @@
   "scripts": {
     "setup": "npm i --no-package-lock && ts-node scripts/setup.ts"
   },
-  "workspaces": [
-    "lift",
-    "photonjs/packages/*",
-    "prisma2/cli/*"
-  ]
+  "workspaces": {
+    "packages": [
+      "lift",
+      "photonjs/packages/*",
+      "prisma2/cli/*"
+    ],
+    "nohoist": [
+      "**/@types/mocha"
+    ]
+  }
 }
