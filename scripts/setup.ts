@@ -4,6 +4,7 @@ import Debug from "debug";
 import fs from "fs";
 import path from "path";
 import pMap from "p-map";
+import del from "del";
 Debug.enable("setup");
 const debug = Debug("setup");
 
@@ -40,7 +41,16 @@ async function main() {
   await run("prisma2/cli/prisma2", "yarn install");
   await run("prisma2/cli/prisma2", "yarn build");
 
-  await run(".", "npx lerna bootstrap");
+  // Cleanup React mess
+  await del("lift/node_modules");
+  await del("prisma2/cli/ink-components/node_modules");
+  await del("prisma2/cli/introspection/node_modules");
+  await del("prisma2/cli/prisma2/node_modules");
+
+  // Install again
+  await run("lift", "yarn install");
+
+  // await run(".", "npx lerna bootstrap");
 }
 
 main().catch(console.error);
