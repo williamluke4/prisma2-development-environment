@@ -5,6 +5,7 @@ import globby from 'globby'
 import topo from 'batching-toposort'
 import { promises as fs } from 'fs'
 import arg from 'arg'
+import pMap from 'p-map'
 
 export type Commit = {
   date: Date
@@ -14,7 +15,7 @@ export type Commit = {
   parentCommits: string[]
 }
 
-async function getLatestChanges(): Promise<string[]> {
+async function getLatestChanges(allRepos: boolean): Promise<string[]> {
   const commits = await Promise.all([
     getLatestCommit('prisma2'),
     getLatestCommit('lift'),
@@ -25,9 +26,15 @@ async function getLatestChanges(): Promise<string[]> {
     return a.date < b.date ? 1 : -1
   })
 
-  const latestCommit = commits[0]
+  if (allRepos) {
+    return flatten(
+      await Promise.all(commits.map(commit => getChangesFromCommit(commit))),
+    )
+  } else {
+    const latestCommit = commits[0]
 
-  return getChangesFromCommit(latestCommit)
+    return getChangesFromCommit(latestCommit)
+  }
 }
 
 async function getChangesFromCommit(commit: Commit): Promise<string[]> {
@@ -289,6 +296,11 @@ async function getNewPrisma2Version(packages: Packages): Promise<string> {
 }
 
 async function publish() {
+  const args = arg({
+    '--publish': Boolean,
+    '--all-repos': Boolean,
+  })
+
   const rawPackages = await getPackages()
   const packages = getPackageDependencies(rawPackages)
   const circles = getCircularDependencies(packages)
@@ -296,15 +308,12 @@ async function publish() {
     throw new Error(`Oops, there are circular dependencies: ${circles}`)
   }
 
-  // const changes = await getLatestChanges()
-  const changes = ['photonjs/packages/get-platform/readme.md']
+  const changes = await getLatestChanges(args['--all-repos'])
+  // const changes = ['photonjs/packages/get-platform/readme.md']
   const changedPackages = getPackagesAffectedByChange(packages, changes)
 
-  const args = arg({
-    '--publish': Boolean,
-  })
-
-  const publishOrder = getPublishOrder(changedPackages)
+  let publishOrder = getPublishOrder(changedPackages)
+  publishOrder = publishOrder.slice(3)
 
   if (args['--publish']) {
     await publishPackages(changedPackages, publishOrder)
@@ -322,7 +331,7 @@ async function testPackages(
   packages: Packages,
   publishOrder: string[][],
 ): Promise<void> {
-  const order = publishOrder.reduce((acc, val) => acc.concat(val), []) // TODO: Replace with .flatten once it's stable
+  const order = flatten(publishOrder)
   console.log(chalk.bold(`\nGoing to run tests. Testing order:`))
   console.log(order)
   for (const pkgName of order) {
@@ -332,6 +341,10 @@ async function testPackages(
       await run(path.dirname(pkg.path), 'yarn test')
     }
   }
+}
+
+function flatten<T>(arr: T[][]): T[] {
+  return arr.reduce((acc, val) => acc.concat(val), [])
 }
 
 function intersection<T>(arr1: T[], arr2: T[]): T[] {
@@ -387,11 +400,17 @@ async function publishPackages(
     await new Promise(r => {
       setTimeout(r, 10000)
     })
+  } else {
+    console.log(`Giving you 5sec to review the changes...`)
+    await new Promise(r => {
+      setTimeout(r, 5000)
+    })
   }
 
   for (const currentBatch of publishOrder) {
-    await Promise.all(
-      currentBatch.map(async pkgName => {
+    await pMap(
+      currentBatch,
+      async pkgName => {
         const pkg = packages[pkgName]
         const pkgDir = path.dirname(pkg.path)
         const isPrisma2OrPhoton = ['prisma2', '@prisma/photon'].includes(
@@ -411,15 +430,24 @@ async function publishPackages(
           )} ${chalk.dim(`on ${tag}`)}`,
         )
 
-        // await run(pkg.path, 'yarn upgrade --latest --scope @prisma')
-        console.log(pkgDir, 'yarn upgrade --latest --scope @prisma')
-        // await run(pkg.path, `yarn publish `)
+        // If it's Prisma or Photon, there is no need to upgrade the deps
+        // This is mostly here, because yarn is buggy
+        if (!isPrisma2OrPhoton) {
+          try {
+            await run(pkgDir, 'yarn upgrade --latest --scope @prisma')
+          } catch (e) {
+            await run(pkgDir, 'yarn upgrade --latest --scope @prisma')
+          }
+        }
 
-        console.log(
+        await run(
           pkgDir,
           `yarn publish --tag ${tag} --new-version ${newVersion}`,
         )
-      }),
+      },
+      {
+        concurrency: 1,
+      },
     )
   }
 }
