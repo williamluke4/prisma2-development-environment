@@ -68,6 +68,11 @@ async function getLatestCommit(dir: string): Promise<Commit> {
   }
 }
 
+/**
+ * Runs a command and returns the resulting stdout in a Promise.
+ * @param cwd cwd for running the command
+ * @param cmd command to run
+ */
 async function runResult(cwd: string, cmd: string): Promise<string> {
   try {
     const result = await execa.command(cmd, {
@@ -85,6 +90,11 @@ async function runResult(cwd: string, cmd: string): Promise<string> {
   }
 }
 
+/**
+ * Runs a command and pipes the stdout & stderr to the current process.
+ * @param cwd cwd for running the command
+ * @param cmd command to run
+ */
 async function run(cwd: string, cmd: string): Promise<void> {
   console.log(chalk.underline('./' + cwd).padEnd(20), chalk.bold(cmd))
   try {
@@ -92,6 +102,10 @@ async function run(cwd: string, cmd: string): Promise<void> {
       cwd,
       stdio: 'inherit',
       shell: true,
+      env: {
+        ...process.env,
+        SKIP_GENERATE: 'true',
+      },
     })
   } catch (e) {
     throw new Error(
@@ -299,7 +313,17 @@ async function publish() {
   const args = arg({
     '--publish': Boolean,
     '--all-repos': Boolean,
+    '--dry-publish': Boolean,
   })
+
+  const yarnVersion = await runResult('.', 'yarn --version')
+  console.log(`yarn version ${yarnVersion}`)
+
+  if (args['--dry-publish'] && args['--publish']) {
+    throw new Error(
+      `Can't use --dry-publish and --publish at the same time. Please choose for either one or the other.`,
+    )
+  }
 
   const rawPackages = await getPackages()
   const packages = getPackageDependencies(rawPackages)
@@ -313,10 +337,9 @@ async function publish() {
   const changedPackages = getPackagesAffectedByChange(packages, changes)
 
   let publishOrder = getPublishOrder(changedPackages)
-  publishOrder = publishOrder.slice(3)
 
-  if (args['--publish']) {
-    await publishPackages(changedPackages, publishOrder)
+  if (args['--publish'] || args['--dry-publish']) {
+    await publishPackages(changedPackages, publishOrder, args['--dry-publish'])
   } else {
     await testPackages(changedPackages, publishOrder)
   }
@@ -368,14 +391,19 @@ function patch(version: string): string | null {
 async function publishPackages(
   packages: Packages,
   publishOrder: string[][],
+  dryRun: boolean,
 ): Promise<void> {
   // we need to release a new prisma2 cli in all cases.
   // if there is a change in photon, photon will also use this new version
   const prisma2Version = await getNewPrisma2Version(packages)
 
+  const publishStr = dryRun
+    ? `Would publish ${chalk.bold('(dry-run)')} `
+    : 'Publishing '
+
   console.log(
     chalk.blueBright(
-      `\nPublishing ${chalk.bold(
+      `\n${publishStr}${chalk.bold(
         String(Object.values(packages).length),
       )} packages. New prisma2 version: ${chalk.bold(
         prisma2Version,
@@ -400,7 +428,7 @@ async function publishPackages(
     await new Promise(r => {
       setTimeout(r, 10000)
     })
-  } else {
+  } else if (!dryRun) {
     console.log(`Giving you 5sec to review the changes...`)
     await new Promise(r => {
       setTimeout(r, 5000)
@@ -430,17 +458,24 @@ async function publishPackages(
           )} ${chalk.dim(`on ${tag}`)}`,
         )
 
-        // If it's Prisma or Photon, there is no need to upgrade the deps
-        // This is mostly here, because yarn is buggy
-        if (!isPrisma2OrPhoton) {
-          try {
-            await run(pkgDir, 'yarn upgrade --latest --scope @prisma')
-          } catch (e) {
-            await run(pkgDir, 'yarn upgrade --latest --scope @prisma')
+        const cmd = dryRun ? console.log : run
+
+        for (const dependency of pkg.uses) {
+          if (packages[dependency]) {
+            await cmd('.', `lerna add ${dependency} --scope=${pkg.name}`)
           }
         }
 
-        await run(
+        for (const devDependency of pkg.usesDev) {
+          if (packages[devDependency]) {
+            await cmd(
+              '.',
+              `lerna add --dev ${devDependency} --scope=${pkg.name}`,
+            )
+          }
+        }
+
+        await cmd(
           pkgDir,
           `yarn publish --tag ${tag} --new-version ${newVersion}`,
         )

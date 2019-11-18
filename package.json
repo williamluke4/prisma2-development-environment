@@ -18,7 +18,9 @@
     "typescript": "^3.7.2"
   },
   "scripts": {
-    "setup": "npm i --no-package-lock && ts-node scripts/setup.ts"
+    "setup": "npm i --no-package-lock && ts-node scripts/setup.ts",
+    "dry-publish": "ts-node scripts/ci/publish.ts --dry-publish",
+    "publish-all": "ts-node scripts/ci/publish.ts --publish"
   },
   "workspaces": {
     "packages": [
