@@ -1,8 +1,9 @@
 # Prisma 2 Development Environment
 
 ```
-yarn
-yarn setup
+npm install -g pnpm
+pnpm install
+pnpm run setup
 ```
 
 ### [Developing Photon.js](https://github.com/prisma/photonjs/tree/master/packages/photon#contributing)
