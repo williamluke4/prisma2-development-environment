@@ -1,26 +1,29 @@
 {
   "name": "prisma2-dev-environment",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "index.js",
   "private": true,
   "license": "MIT",
   "devDependencies": {
     "@types/debug": "^4.1.5",
-    "@types/node": "^12.12.7",
+    "@types/node": "^12.12.9",
+    "arg": "^4.1.1",
     "batching-toposort": "^1.2.0",
     "chalk": "^3.0.0",
     "debug": "^4.1.1",
     "del": "^5.1.0",
-    "execa": "^3.2.0",
+    "execa": "^3.3.0",
     "globby": "^10.0.1",
     "p-map": "^3.0.0",
-    "ts-node": "^8.5.0",
+    "ts-node": "^8.5.2",
     "typescript": "^3.7.2"
   },
   "scripts": {
     "setup": "npm i --no-package-lock && ts-node scripts/setup.ts",
     "dry-publish": "ts-node scripts/ci/publish.ts --dry-publish",
-    "publish-all": "ts-node scripts/ci/publish.ts --publish"
+    "publish-all": "ts-node scripts/ci/publish.ts --publish",
+    "test": "ts-node scripts/ci/publish.ts",
+    "all": "ts-node scripts/ci/all.ts"
   },
   "workspaces": {
     "packages": [

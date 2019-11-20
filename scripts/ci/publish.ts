@@ -131,7 +131,7 @@ async function getPackages(): Promise<RawPackages> {
     ],
     {
       ignore: ['**/node_modules/**', '**/examples/**'],
-    },
+    } as any, // TODO: Apparently upgrading to ts 3.7.2 broke this
   )
   const packages = await Promise.all(
     packagePaths.map(async p => ({
@@ -140,7 +140,8 @@ async function getPackages(): Promise<RawPackages> {
     })),
   )
 
-  return packages.reduce<RawPackages>((acc, p) => {
+  return packages.reduce<RawPackages>((acc, p: any) => {
+    // TODO: Apparently upgrading to ts 3.7.2 broke this
     if (p.packageJson.name) {
       acc[p.packageJson.name] = p
     }
@@ -206,7 +207,9 @@ function getPrismaDependencies(dependencies?: {
   if (!dependencies) {
     return []
   }
-  return Object.keys(dependencies).filter(d => d.startsWith('@prisma'))
+  return Object.keys(dependencies).filter(
+    d => d.startsWith('@prisma') && !d.startsWith('@prisma/studio'),
+  )
 }
 
 function getCircularDependencies(packages: Packages): string[][] {
@@ -333,13 +336,20 @@ async function publish() {
   }
 
   const changes = await getLatestChanges(args['--all-repos'])
+  console.log(chalk.bold(`Changed files:`))
+  console.log(changes.map(c => `  ${c}`).join('\n'))
   // const changes = ['photonjs/packages/get-platform/readme.md']
   const changedPackages = getPackagesAffectedByChange(packages, changes)
 
   let publishOrder = getPublishOrder(changedPackages)
 
   if (args['--publish'] || args['--dry-publish']) {
-    await publishPackages(changedPackages, publishOrder, args['--dry-publish'])
+    await publishPackages(
+      packages,
+      changedPackages,
+      publishOrder,
+      args['--dry-publish'],
+    )
   } else {
     await testPackages(changedPackages, publishOrder)
   }
@@ -361,7 +371,7 @@ async function testPackages(
     const pkg = packages[pkgName]
     if (pkg.packageJson.scripts.test) {
       console.log(`\nTesting ${chalk.magentaBright(pkg.name)}`)
-      await run(path.dirname(pkg.path), 'yarn test')
+      await run(path.dirname(pkg.path), 'pnpm run test')
     }
   }
 }
@@ -390,6 +400,7 @@ function patch(version: string): string | null {
 
 async function publishPackages(
   packages: Packages,
+  changedPackages: Packages,
   publishOrder: string[][],
   dryRun: boolean,
 ): Promise<void> {
@@ -397,20 +408,22 @@ async function publishPackages(
   // if there is a change in photon, photon will also use this new version
   const prisma2Version = await getNewPrisma2Version(packages)
 
-  const publishStr = dryRun
-    ? `Would publish ${chalk.bold('(dry-run)')} `
-    : 'Publishing '
+  const publishStr = dryRun ? `${chalk.bold('Dry publish')} ` : 'Publishing '
 
   console.log(
     chalk.blueBright(
       `\n${publishStr}${chalk.bold(
-        String(Object.values(packages).length),
+        String(Object.values(changedPackages).length),
       )} packages. New prisma2 version: ${chalk.bold(
         prisma2Version,
       )}. Publish order:`,
     ),
   )
-  console.log(publishOrder)
+  console.log(
+    chalk.blueBright(
+      publishOrder.map((o, i) => `  ${i + 1}. ${o.join(', ')}`).join('\n'),
+    ),
+  )
 
   if (!prisma2Version.includes('alpha')) {
     console.log(
@@ -429,7 +442,7 @@ async function publishPackages(
       setTimeout(r, 10000)
     })
   } else if (!dryRun) {
-    console.log(`Giving you 5sec to review the changes...`)
+    console.log(`\nGiving you 5sec to review the changes...`)
     await new Promise(r => {
       setTimeout(r, 5000)
     })
@@ -439,6 +452,10 @@ async function publishPackages(
     await pMap(
       currentBatch,
       async pkgName => {
+        // if (pkgName !== 'prisma2') {
+        //   console.log(`Skipping ${pkgName}`)
+        //   return
+        // }
         const pkg = packages[pkgName]
         const pkgDir = path.dirname(pkg.path)
         const isPrisma2OrPhoton = ['prisma2', '@prisma/photon'].includes(
@@ -460,31 +477,34 @@ async function publishPackages(
 
         const cmd = dryRun ? console.log : run
 
-        for (const dependency of pkg.uses) {
-          if (packages[dependency]) {
-            await cmd('.', `lerna add ${dependency} --scope=${pkg.name}`)
-          }
+        const prismaDeps = [...pkg.uses, ...pkg.usesDev]
+        if (prismaDeps.length > 0) {
+          await cmd(
+            pkgDir,
+            `pnpm update ${prismaDeps.join(' ')} --filter "${pkgName}"`,
+          )
         }
 
-        for (const devDependency of pkg.usesDev) {
-          if (packages[devDependency]) {
-            await cmd(
-              '.',
-              `lerna add --dev ${devDependency} --scope=${pkg.name}`,
-            )
-          }
-        }
-
-        await cmd(
-          pkgDir,
-          `yarn publish --tag ${tag} --new-version ${newVersion}`,
-        )
+        await cmd(pkgDir, `pnpm version --no-git-version ${newVersion} -f`)
+        await cmd(pkgDir, `pnpm publish --tag ${tag}`)
       },
       {
         concurrency: 1,
       },
     )
   }
+}
+
+async function getCurrentVersion(
+  packages: Packages,
+  pkgName: string,
+): Promise<string> {
+  if (!packages[pkgName]) {
+    throw new Error(`Could not find package ${pkgName}`)
+  }
+  const file = await fs.readFile(packages[pkgName].path, 'utf-8')
+  const packageJson = JSON.parse(file)
+  return packageJson.version
 }
 
 publish()
